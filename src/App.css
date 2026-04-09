@@ -1,0 +1,27 @@
+/* Rajmandir Feedback System — App-level styles */
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(220, 15%, 80%);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(220, 15%, 65%);
+}
+
+/* Selection color */
+::selection {
+  background: hsl(350, 80%, 45%, 0.2);
+  color: hsl(350, 80%, 30%);
+}
