@@ -322,8 +322,11 @@ export function FeedbackProvider({
           })
           .filter((record): record is Feedback => Boolean(record));
 
-        const shouldRemainInWorkingQueue = (record: Feedback) =>
-          isWorkingQueueStatus(record.status);
+        const shouldRemainInWorkingQueue = (record: Feedback) => {
+          const hasHistoricalTimestamp = Boolean(record.resolvedAt || record.closedAt || record.archivedAt);
+          if (hasHistoricalTimestamp) return false;
+          return isWorkingQueueStatus(record.status);
+        };
 
         const sourceScoped = isWorkingSource
           ? mapped.filter(record => shouldRemainInWorkingQueue(record))
