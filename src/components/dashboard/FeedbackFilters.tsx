@@ -1,12 +1,51 @@
 import { useFeedback } from '@/contexts/FeedbackContext';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { STORE_LOCATIONS, STATUS_OPTIONS } from '@/types/feedback';
 import { Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { useAuth } from '@/contexts/AuthContext';
+import { useMemo } from 'react';
 
 export default function FeedbackFilters() {
-  const { filters, setFilters } = useFeedback();
+  const { filters, setFilters, feedbacks } = useFeedback();
+  const { role, allowedStores } = useAuth();
+
+  const normalizedAllowedStores = useMemo(
+    () => new Set((allowedStores || []).map(store => String(store || '').trim().toLowerCase()).filter(Boolean)),
+    [allowedStores]
+  );
+
+  const allStoreOptions = useMemo(
+    () => Array.from(new Set(feedbacks.map(row => String(row.storeLocation || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [feedbacks]
+  );
+
+  const allStatusOptions = useMemo(
+    () => Array.from(new Set(feedbacks.map(row => String(row.status || '').trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [feedbacks]
+  );
+
+  const storeOptions = useMemo(() => {
+    const scoped =
+      role === 'superadmin' || normalizedAllowedStores.size === 0
+        ? allStoreOptions
+        : allStoreOptions.filter(store => normalizedAllowedStores.has(store.trim().toLowerCase()));
+
+    if (filters.store !== 'All' && filters.store && !scoped.includes(filters.store)) {
+      return [filters.store, ...scoped];
+    }
+    return scoped;
+  }, [allStoreOptions, filters.store, normalizedAllowedStores, role]);
+
+  const statusOptions = useMemo(() => {
+    const alwaysInclude = ['Complaint', 'Feedback'];
+    const merged = Array.from(new Set([...alwaysInclude, ...allStatusOptions]));
+
+    if (filters.status !== 'All' && filters.status && !merged.includes(filters.status)) {
+      return [filters.status, ...merged];
+    }
+    return merged;
+  }, [allStatusOptions, filters.status]);
 
   const clearFilters = () => {
     setFilters({ store: 'All', status: 'All', dateFrom: '', dateTo: '', search: '', ratingMin: 0 });
@@ -40,7 +79,7 @@ export default function FeedbackFilters() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="All">All Stores</SelectItem>
-            {STORE_LOCATIONS.map(s => (
+            {storeOptions.map(s => (
               <SelectItem key={s} value={s}>{s}</SelectItem>
             ))}
           </SelectContent>
@@ -51,7 +90,7 @@ export default function FeedbackFilters() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="All">All Status</SelectItem>
-            {STATUS_OPTIONS.map(s => (
+            {statusOptions.map(s => (
               <SelectItem key={s} value={s}>{s}</SelectItem>
             ))}
           </SelectContent>

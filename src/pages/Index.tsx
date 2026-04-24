@@ -3,9 +3,10 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/DashboardLayout';
 import DashboardPage from './DashboardPage';
-import AnalyticsPage from './AnalyticsPage';
 import StoresPage from './StoresPage';
 import ReportsPage from './ReportsPage';
+import AnalyticsPage from './AnalyticsPage';
+import MigrationDataPage from './MigrationDataPage';
 import DoneFeedbacksPage from './DoneFeedbacksPage';
 import SettingsPage from './SettingsPage';
 import PermissionsPage from './PermissionsPage';
@@ -19,6 +20,7 @@ const routeMap: Record<string, React.ComponentType> = {
   '/analytics': AnalyticsPage,
   '/stores': StoresPage,
   '/reports': ReportsPage,
+  '/migration': MigrationDataPage,
   '/pending': PendingFeedbacksPage,
   '/done': DoneFeedbacksPage,
   '/settings': SettingsPage,
