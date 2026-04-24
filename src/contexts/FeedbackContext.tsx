@@ -52,6 +52,7 @@ const FEEDBACK_QUERY_STALE_TIME = 1000 * 60 * 5;
 const DEFAULT_UPDATE_API_URL = 'http://localhost:3000/api/update';
 const WORKING_DATA_API_PAGE_SIZE = 500;
 const WORKING_DATA_API_MAX_PAGES = 200;
+const SUPABASE_FALLBACK_PAGE_SIZE = 1000;
 
 const isLoopbackHost = (host: string) => {
   const key = String(host || '').trim().toLowerCase();
@@ -188,13 +189,25 @@ export function FeedbackProvider({
       try {
         const fetchWorkingDataRows = async () => {
           const fetchFromSupabase = async () => {
-            const { data, error: supabaseError } = await supabase
-              .schema(WORKING_DATA_SCHEMA)
-              .from(WORKING_DATA_TABLE)
-              .select('*');
+            const rows: any[] = [];
+            let from = 0;
 
-            if (supabaseError) throw supabaseError;
-            return data || [];
+            while (true) {
+              const { data, error: supabaseError } = await supabase
+                .schema(WORKING_DATA_SCHEMA)
+                .from(WORKING_DATA_TABLE)
+                .select('*')
+                .range(from, from + SUPABASE_FALLBACK_PAGE_SIZE - 1);
+
+              if (supabaseError) throw supabaseError;
+              if (!data || data.length === 0) break;
+
+              rows.push(...data);
+              if (data.length < SUPABASE_FALLBACK_PAGE_SIZE) break;
+              from += SUPABASE_FALLBACK_PAGE_SIZE;
+            }
+
+            return rows;
           };
 
           // Resolved/Closed view must always read complete DB rows, not queue API slices.
