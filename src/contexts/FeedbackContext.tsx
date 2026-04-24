@@ -47,6 +47,7 @@ const defaultFilters: FeedbackFilters = {
 
 const WORKING_DATA_SCHEMA = 'public';
 const WORKING_DATA_TABLE = 'working_data';
+const MIGRATION_DATA_TABLE = 'migration_data';
 const HISTORY_SEPARATOR = '\n\n-----\n\n';
 const FEEDBACK_QUERY_STALE_TIME = 1000 * 60 * 5;
 const DEFAULT_UPDATE_API_URL = 'http://localhost:3000/api/update';
@@ -158,6 +159,7 @@ export function FeedbackProvider({
   const feedbackQueryKey = ['feedbacks', source] as const;
   const isMigrationSource = source === 'migration';
   const isWorkingSource = source === 'working';
+  const sourceTable = isMigrationSource ? MIGRATION_DATA_TABLE : WORKING_DATA_TABLE;
   const refreshAllFeedbackViews = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['feedbacks'] });
     queryClient.refetchQueries({ queryKey: ['feedbacks'], type: 'active' });
@@ -166,7 +168,7 @@ export function FeedbackProvider({
   // Supabase is the source of truth for both active work and historical records.
   useEffect(() => {
     const channelName = `feedbacks-realtime-${source}-${Math.random().toString(36).slice(2, 10)}`;
-    const realtimeTable = WORKING_DATA_TABLE;
+    const realtimeTable = sourceTable;
     const channel = supabase
       .channel(channelName)
       .on(
@@ -181,21 +183,21 @@ export function FeedbackProvider({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [refreshAllFeedbackViews, source]);
+  }, [refreshAllFeedbackViews, source, sourceTable]);
 
   const { data: feedbacks = [] } = useQuery({
     queryKey: feedbackQueryKey,
     queryFn: async () => {
       try {
         const fetchWorkingDataRows = async () => {
-          const fetchFromSupabase = async () => {
+          const fetchFromSupabase = async (tableName: string) => {
             const rows: any[] = [];
             let from = 0;
 
             while (true) {
               const { data, error: supabaseError } = await supabase
                 .schema(WORKING_DATA_SCHEMA)
-                .from(WORKING_DATA_TABLE)
+                .from(tableName)
                 .select('*')
                 .range(from, from + SUPABASE_FALLBACK_PAGE_SIZE - 1);
 
@@ -210,14 +212,8 @@ export function FeedbackProvider({
             return rows;
           };
 
-          // Resolved/Closed view must always read complete DB rows, not queue API slices.
-          if (isMigrationSource) {
-            return fetchFromSupabase();
-          }
-
-          const workingDataApiUrl = getWorkingDataApiUrl();
-
-          try {
+          const fetchWorkingRowsFromApi = async () => {
+            const workingDataApiUrl = getWorkingDataApiUrl();
             if (!workingDataApiUrl) {
               throw new Error('Working data backend API is not configured for this environment.');
             }
@@ -240,16 +236,30 @@ export function FeedbackProvider({
               allRows.push(...payload.data);
 
               const hasMore = Boolean(payload?.pagination?.hasMore);
-              if (!hasMore) {
-                break;
-              }
-
+              if (!hasMore) break;
               page += 1;
             }
 
             return allRows;
+          };
+
+          if (isMigrationSource) {
+            const [migrationRows, workingRows] = await Promise.all([
+              fetchFromSupabase(MIGRATION_DATA_TABLE).catch(() => []),
+              fetchWorkingRowsFromApi().catch(() => fetchFromSupabase(WORKING_DATA_TABLE)),
+            ]);
+
+            if (migrationRows.length === 0 && workingRows.length === 0) {
+              return fetchFromSupabase(WORKING_DATA_TABLE);
+            }
+
+            return [...migrationRows, ...workingRows];
+          }
+
+          try {
+            return await fetchWorkingRowsFromApi();
           } catch {
-            return fetchFromSupabase();
+            return fetchFromSupabase(sourceTable);
           }
         };
 
@@ -268,11 +278,11 @@ export function FeedbackProvider({
           const complaintValue =
             row['Your Complaint'] || row.your_complaint || row.complaint || '';
           const dbRecordId = String(
-            row.id ??
-            row['id'] ??
             row.record_id ??
             row['record_id'] ??
             row.external_id ??
+            row.id ??
+            row['id'] ??
             ''
           ).trim();
           if (!dbRecordId) return null;
@@ -344,7 +354,26 @@ export function FeedbackProvider({
         const sourceScoped = isWorkingSource
           ? mapped.filter(record => shouldRemainInWorkingQueue(record))
           : mapped.filter(record => !shouldRemainInWorkingQueue(record));
-        return sourceScoped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        const deduped = new Map<string, Feedback>();
+        sourceScoped.forEach(record => {
+          const key = String(record._id || '').trim();
+          if (!key) return;
+
+          const previous = deduped.get(key);
+          if (!previous) {
+            deduped.set(key, record);
+            return;
+          }
+
+          const prevTime = new Date(previous.updatedAt || previous.createdAt).getTime();
+          const nextTime = new Date(record.updatedAt || record.createdAt).getTime();
+          if (nextTime >= prevTime) {
+            deduped.set(key, record);
+          }
+        });
+
+        return Array.from(deduped.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       } catch (error: any) {
         const contextLabel = isWorkingSource ? 'Working Data' : 'Migration Data';
         toast.error(`Failed to load ${contextLabel}: ${error.message}`);
