@@ -103,10 +103,15 @@ const normalizeStoreKey = (value: unknown) =>
     .toLowerCase();
 
 const WORKING_QUEUE_STATUS_KEYS = new Set([
+  'new',
+  'active',
   'pending',
   'complaint',
+  'feedback',
   'in process',
   'in progress',
+  'channel partner store',
+  'channel partner',
 ]);
 
 const normalizeQueueStatus = (value: unknown) =>
@@ -182,6 +187,21 @@ export function FeedbackProvider({
     queryFn: async () => {
       try {
         const fetchWorkingDataRows = async () => {
+          const fetchFromSupabase = async () => {
+            const { data, error: supabaseError } = await supabase
+              .schema(WORKING_DATA_SCHEMA)
+              .from(WORKING_DATA_TABLE)
+              .select('*');
+
+            if (supabaseError) throw supabaseError;
+            return data || [];
+          };
+
+          // Resolved/Closed view must always read complete DB rows, not queue API slices.
+          if (isMigrationSource) {
+            return fetchFromSupabase();
+          }
+
           const workingDataApiUrl = getWorkingDataApiUrl();
 
           try {
@@ -216,13 +236,7 @@ export function FeedbackProvider({
 
             return allRows;
           } catch {
-            const { data, error: supabaseError } = await supabase
-              .schema(WORKING_DATA_SCHEMA)
-              .from(WORKING_DATA_TABLE)
-              .select('*');
-
-            if (supabaseError) throw supabaseError;
-            return data || [];
+            return fetchFromSupabase();
           }
         };
 
