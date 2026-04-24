@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ThemeProvider } from "@/contexts/ThemeContext";
 import { FeedbackProvider } from "@/contexts/FeedbackContext";
 import Index from "./pages/Index.tsx";
+import FeedbackFormPage from "./pages/FeedbackFormPage.tsx";
 import ResetPasswordPage from "./pages/ResetPasswordPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
 
@@ -28,8 +29,11 @@ const App = () => (
                 <Route path="/analytics" element={<Index />} />
                 <Route path="/stores" element={<Index />} />
                 <Route path="/reports" element={<Index />} />
+                <Route path="/migration" element={<Index />} />
                 <Route path="/settings" element={<Index />} />
                 <Route path="/permissions" element={<Index />} />
+                <Route path="/feedback-form" element={<FeedbackFormPage />} />
+                <Route path="/form" element={<FeedbackFormPage />} />
                 <Route path="/reset-password" element={<ResetPasswordPage />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

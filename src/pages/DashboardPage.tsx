@@ -21,14 +21,14 @@ export default function DashboardPage() {
               <LayoutDashboard className="w-5 h-5 text-primary" />
             </div>
             <div>
-              <h2 className="text-2xl font-display font-bold text-foreground">Dashboard</h2>
-              <p className="text-sm text-muted-foreground">Overview of all feedback activity</p>
+              <h2 className="text-2xl font-display font-bold text-foreground">Working Data</h2>
+              <p className="text-sm text-muted-foreground">Live Supabase operations for daily pending and active feedback updates.</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="hidden md:flex items-center gap-2 text-xs text-muted-foreground bg-muted/50 rounded-lg px-3 py-2">
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              Live Data
+              Supabase Live
             </div>
           </div>
         </div>

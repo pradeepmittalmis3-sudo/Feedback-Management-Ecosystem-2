@@ -1,13 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
-import { UserRole } from '@/types/feedback';
+import { STORE_LOCATIONS, UserRole } from '@/types/feedback';
 
 interface AuthContextType {
   user: User | null;
   session: Session | null;
   loading: boolean;
   role: UserRole | null;
+  storeAccess: 'viewer' | 'editor';
+  allowedStores: string[];
   profileName: string | null;
   department: string | null;
   status: 'Approved' | 'Pending' | 'Rejected';
@@ -24,6 +26,8 @@ interface DirectoryUser {
   name: string;
   department: string;
   role: UserRole | null;
+  storeAccess: 'viewer' | 'editor';
+  allowedStores: string[];
   status: 'Approved' | 'Pending' | 'Rejected';
 }
 
@@ -33,7 +37,10 @@ const NAME_KEYS = ['name', 'Name', 'full_name', 'Full Name', 'fullName'] as cons
 const DEPARTMENT_KEYS = ['department', 'Department', 'dept', 'Dept'] as const;
 const STATUS_KEYS = ['status', 'Status', 'user_status', 'User Status'] as const;
 const ROLE_KEYS = ['role', 'Role', 'user_role', 'User Role'] as const;
+const STORE_ACCESS_KEYS = ['store_access', 'Store Access', 'access_level', 'Access Level', 'store_permission', 'Store Permission'] as const;
+const ALLOWED_STORES_KEYS = ['allowed_stores', 'Allowed Stores', 'store_scope', 'Store Scope', 'stores', 'Stores'] as const;
 const ID_KEYS = ['id', 'Id', 'ID', '_id'] as const;
+const STORE_NAME_MAP = new Map(STORE_LOCATIONS.map((store) => [store.trim().toLowerCase(), store]));
 
 // Master User Whitelist (System Admins)
 const WHITELIST: Record<string, { role: UserRole; name: string; department: string }> = {
@@ -55,6 +62,64 @@ const normalizeRole = (value: unknown): UserRole | null => {
   return VALID_ROLES.includes(role as UserRole) ? (role as UserRole) : null;
 };
 
+const normalizeStoreName = (value: unknown) => {
+  const cleaned = String(value || '').trim();
+  if (!cleaned) return '';
+  return STORE_NAME_MAP.get(cleaned.toLowerCase()) || cleaned;
+};
+
+const parseAllowedStores = (value: unknown): string[] => {
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map(normalizeStoreName)
+          .filter(Boolean)
+      )
+    );
+  }
+
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+
+  if (raw.toLowerCase() === 'all') {
+    return [...STORE_LOCATIONS];
+  }
+
+  if (raw.startsWith('[') && raw.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return Array.from(
+          new Set(
+            parsed
+              .map(normalizeStoreName)
+              .filter(Boolean)
+          )
+        );
+      }
+    } catch {
+      // fall through to comma parsing
+    }
+  }
+
+  return Array.from(
+    new Set(
+      raw
+        .split(',')
+        .map(token => normalizeStoreName(token))
+        .filter(Boolean)
+    )
+  );
+};
+
+const normalizeStoreAccess = (value: unknown, role?: UserRole | null): 'viewer' | 'editor' => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'viewer') return 'viewer';
+  if (normalized === 'editor') return 'editor';
+  return role === 'viewer' ? 'viewer' : 'editor';
+};
+
 const pickFirst = (row: Record<string, unknown>, keys: readonly string[]) => {
   for (const key of keys) {
     const value = row[key];
@@ -65,12 +130,15 @@ const pickFirst = (row: Record<string, unknown>, keys: readonly string[]) => {
 
 const parseDirectoryUser = (row: any): DirectoryUser => {
   const role = normalizeRole(pickFirst(row, ROLE_KEYS));
+  const allowedStores = parseAllowedStores(pickFirst(row, ALLOWED_STORES_KEYS));
   return {
     id: String(pickFirst(row, ID_KEYS)).trim(),
     email: String(pickFirst(row, EMAIL_KEYS)).trim().toLowerCase(),
     name: String(pickFirst(row, NAME_KEYS)).trim(),
     department: String(pickFirst(row, DEPARTMENT_KEYS) || 'Staff').trim() || 'Staff',
     role,
+    storeAccess: normalizeStoreAccess(pickFirst(row, STORE_ACCESS_KEYS), role),
+    allowedStores,
     status: normalizeStatus(pickFirst(row, STATUS_KEYS)),
   };
 };
@@ -118,6 +186,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     directoryUser?.role ??
     normalizeRole(user?.user_metadata?.role) ??
     null;
+  const allowedStores =
+    isWhitelist
+      ? [...STORE_LOCATIONS]
+      : directoryUser?.allowedStores ??
+        parseAllowedStores(user?.user_metadata?.allowed_stores ?? user?.user_metadata?.store_scope ?? user?.user_metadata?.stores);
+  const storeAccess =
+    isWhitelist
+      ? 'editor'
+      : normalizeStoreAccess(directoryUser?.storeAccess ?? user?.user_metadata?.store_access, role);
   const profileName =
     isWhitelist?.name ??
     directoryUser?.name ??
@@ -170,6 +247,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const sheetProfile = await fetchDirectoryUser(signedInUser);
     const effectiveStatus = normalizeStatus(sheetProfile?.status ?? signedInUser.user_metadata?.status ?? 'Pending');
     const effectiveRole = normalizeRole(sheetProfile?.role ?? signedInUser.user_metadata?.role);
+    const effectiveStores = parseAllowedStores(
+      sheetProfile?.allowedStores ??
+      signedInUser.user_metadata?.allowed_stores ??
+      signedInUser.user_metadata?.store_scope ??
+      signedInUser.user_metadata?.stores
+    );
 
     if (effectiveStatus !== 'Approved') {
       await supabase.auth.signOut();
@@ -179,6 +262,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!effectiveRole) {
       await supabase.auth.signOut();
       throw new Error('Access Denied: Role not assigned yet. Please contact Super Admin.');
+    }
+
+    if (effectiveRole !== 'superadmin' && effectiveRole !== 'admin' && effectiveStores.length === 0) {
+      await supabase.auth.signOut();
+      throw new Error('Access Denied: Store access not assigned. Please contact Super Admin.');
     }
   };
 
@@ -207,6 +295,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         department: dept,
         status: 'Pending',
         role: '',
+        store_access: 'viewer',
+        allowed_stores: '',
       };
 
       const postJson = async (data: Record<string, unknown>) => {
@@ -277,7 +367,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, role, profileName, status, department, signIn, signUp, signOut, resetPassword, updatePassword }}>
+    <AuthContext.Provider value={{ user, session, loading, role, storeAccess, allowedStores, profileName, status, department, signIn, signUp, signOut, resetPassword, updatePassword }}>
       {children}
     </AuthContext.Provider>
   );

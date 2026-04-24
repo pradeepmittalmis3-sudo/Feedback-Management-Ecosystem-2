@@ -1,5 +1,20 @@
 export type UserRole = 'superadmin' | 'admin' | 'user' | 'viewer';
-export type FeedbackStatus = 'Complaint' | 'Feedback' | 'Fake' | 'Pending' | 'Solved' | 'Channel Partner';
+export type FeedbackStatus =
+  | 'New'
+  | 'Active'
+  | 'In Progress'
+  | 'Complaint'
+  | 'Solved'
+  | 'Resolved'
+  | 'Closed'
+  | 'Archived'
+  | 'Feedback'
+  | 'Fake'
+  | 'Channel Partner Store'
+  | 'Pending'
+  | 'Channel Partner';
+
+export type FeedbackSource = 'app' | 'google_form' | 'sheet' | 'migration' | 'legacy' | string;
 
 export interface Feedback {
   _id: string;
@@ -18,10 +33,19 @@ export interface Feedback {
   complaint?: string;
   type: string;
   userName?: string;
+  assignedTo?: string;
+  mode?: string;
+  remarks?: string;
+  updatedBy?: string;
+  improvementFeedback?: string;
   department?: string;
   externalId?: string;
+  source?: FeedbackSource;
   status: FeedbackStatus;
   statusNotes?: string;
+  resolvedAt?: string;
+  closedAt?: string;
+  archivedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,14 +75,33 @@ export const STORE_LOCATIONS = [
 ] as const;
 
 export const STATUS_OPTIONS: FeedbackStatus[] = [
-  'Complaint', 'Feedback', 'Fake', 'Pending', 'Solved', 'Channel Partner'
+  'New',
+  'Active',
+  'In Progress',
+  'Pending',
+  'Complaint',
+  'Feedback',
+  'Solved',
+  'Resolved',
+  'Closed',
+  'Archived',
+  'Fake',
+  'Channel Partner Store',
+  'Channel Partner',
 ];
 
 export const STATUS_COLORS: Record<FeedbackStatus, string> = {
+  'New': 'bg-info/15 text-info',
+  'Active': 'bg-primary/15 text-primary',
+  'In Progress': 'bg-warning/15 text-accent',
   'Complaint': 'bg-destructive/15 text-destructive',
+  'Solved': 'bg-success/15 text-success',
+  'Resolved': 'bg-success/15 text-success',
+  'Closed': 'bg-slate-100 text-slate-700',
+  'Archived': 'bg-muted text-muted-foreground',
   'Feedback': 'bg-info/15 text-info',
   'Fake': 'bg-muted text-muted-foreground',
+  'Channel Partner Store': 'bg-orange-100 text-orange-700',
   'Pending': 'bg-warning/15 text-accent',
-  'Solved': 'bg-success/15 text-success',
   'Channel Partner': 'bg-primary/15 text-primary',
 };

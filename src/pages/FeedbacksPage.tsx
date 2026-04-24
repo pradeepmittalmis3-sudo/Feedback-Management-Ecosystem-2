@@ -8,15 +8,49 @@ function FeedbacksContent() {
   const { filteredFeedbacks } = useFeedback();
 
   const exportCSV = () => {
-    const headers = ['Date', 'Name', 'Mobile', 'Store', 'Staff Behavior', 'Staff Service', 'Store Rating', 'Price OK', 'Bill Received', 'Complaint', 'Feedback', 'Suggestions', 'Products Unavailable', 'Status'];
+    const headers = [
+      'Timestamp',
+      'Name',
+      'Mobile Number',
+      'Store Location',
+      'Staff Behavior',
+      'Staff Service',
+      'Satisfaction Level',
+      'Price Challenge',
+      'Bill Received',
+      'Your Feedback',
+      'Improvement Feedback',
+      'Product Unavailable',
+      'Receipt Compliance',
+      'Your Complaint',
+      'Type of Complaint',
+      'Status',
+      'Assigned To',
+      'Mode',
+      'Remarks',
+      'Updated By',
+    ];
     const rows = filteredFeedbacks.map(fb => [
-      new Date(fb.createdAt).toLocaleDateString('en-IN'),
-      fb.name, fb.mobile, fb.storeLocation,
-      fb.staffBehavior, fb.staffService, fb.storeSatisfaction,
-      fb.priceChallengeOk ? 'Yes' : 'No',
-      fb.billReceived ? 'Yes' : 'No',
-      fb.complaint || '', fb.feedback || '', fb.suggestions || '',
-      fb.productUnavailable || '', fb.status,
+      new Date(fb.createdAt).toLocaleString('en-IN'),
+      fb.name || '',
+      fb.mobile || '',
+      fb.storeLocation || '',
+      fb.staffBehavior ?? '',
+      fb.staffService ?? '',
+      fb.staffSatisfied || '',
+      fb.priceChallenge || '',
+      fb.billReceived || '',
+      fb.feedback || '',
+      fb.improvementFeedback || fb.suggestions || '',
+      fb.productUnavailable || '',
+      fb.billCompliance || '',
+      fb.complaint || '',
+      fb.type || '',
+      fb.status || '',
+      fb.assignedTo || fb.userName || '',
+      fb.mode || '',
+      fb.remarks || fb.statusNotes || '',
+      fb.updatedBy || '',
     ]);
     const csv = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });

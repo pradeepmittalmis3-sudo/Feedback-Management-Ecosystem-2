@@ -1,12 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { UserPlus, Shield, UserX, Mail, UserCheck, Activity, Users, BarChart3, Clock, Loader2 } from 'lucide-react';
-import { UserRole } from '@/types/feedback';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Checkbox } from '@/components/ui/checkbox';
+import { UserPlus, Shield, UserX, Mail, UserCheck, Activity, Users, BarChart3, Clock, Loader2, Search, CheckSquare, Square } from 'lucide-react';
+import { STORE_LOCATIONS, UserRole } from '@/types/feedback';
 import { toast } from 'sonner';
+
+type StoreAccessLevel = 'viewer' | 'editor';
 
 interface AppUser {
   id: string;
@@ -20,6 +24,203 @@ interface AppUser {
     reports: boolean;
     analytics: boolean;
   };
+  storeAccess: StoreAccessLevel;
+  allowedStores: string[];
+}
+
+const STORE_KEY_MAP = new Map(STORE_LOCATIONS.map(store => [store.trim().toLowerCase(), store]));
+const STORE_ACCESS_KEYS = ['store_access', 'Store Access', 'store_permission', 'Store Permission', 'access_level', 'Access Level'];
+const ALLOWED_STORE_KEYS = ['allowed_stores', 'Allowed Stores', 'store_scope', 'Store Scope', 'stores', 'Stores'];
+
+const normalizeStoreName = (value: unknown) => {
+  const cleaned = String(value || '').trim();
+  if (!cleaned) return '';
+  return STORE_KEY_MAP.get(cleaned.toLowerCase()) || cleaned;
+};
+
+const parseStoreAccess = (value: unknown, role: UserRole | null): StoreAccessLevel => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'viewer') return 'viewer';
+  if (normalized === 'editor') return 'editor';
+  return role === 'viewer' ? 'viewer' : 'editor';
+};
+
+const parseAllowedStores = (value: unknown) => {
+  if (Array.isArray(value)) {
+    return Array.from(
+      new Set(
+        value
+          .map(normalizeStoreName)
+          .filter(Boolean)
+      )
+    );
+  }
+
+  const raw = String(value || '').trim();
+  if (!raw) return [];
+  if (raw.toLowerCase() === 'all') return [...STORE_LOCATIONS];
+
+  if (raw.startsWith('[') && raw.endsWith(']')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return Array.from(
+          new Set(
+            parsed
+              .map(normalizeStoreName)
+              .filter(Boolean)
+          )
+        );
+      }
+    } catch {
+      // fallback to comma split
+    }
+  }
+
+  return Array.from(
+    new Set(
+      raw
+        .split(',')
+        .map(token => normalizeStoreName(token))
+        .filter(Boolean)
+    )
+  );
+};
+
+const serializeAllowedStores = (stores: string[]) => {
+  if (!stores.length) return '';
+  const normalized = Array.from(new Set(stores.map(normalizeStoreName).filter(Boolean)));
+  if (normalized.length === STORE_LOCATIONS.length) return 'ALL';
+  return normalized.join(', ');
+};
+
+function StoreScopePicker({
+  stores,
+  disabled,
+  onSave,
+}: {
+  stores: string[];
+  disabled?: boolean;
+  onSave: (stores: string[]) => Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [draftStores, setDraftStores] = useState<string[]>(stores);
+  const [saving, setSaving] = useState(false);
+
+  const normalizedDraft = useMemo(
+    () => new Set(draftStores.map(store => normalizeStoreName(store).toLowerCase()).filter(Boolean)),
+    [draftStores]
+  );
+  const orderedDraft = useMemo(
+    () => STORE_LOCATIONS.filter(store => normalizedDraft.has(store.toLowerCase())),
+    [normalizedDraft]
+  );
+  const allSelected = orderedDraft.length === STORE_LOCATIONS.length;
+  const filteredStores = useMemo(
+    () => STORE_LOCATIONS.filter(store => store.toLowerCase().includes(search.trim().toLowerCase())),
+    [search]
+  );
+
+  useEffect(() => {
+    if (open) {
+      setDraftStores(stores);
+      setSearch('');
+    }
+  }, [open, stores]);
+
+  const toggleStore = (store: string) => {
+    const key = store.toLowerCase();
+    setDraftStores(prev => {
+      const next = new Set(prev.map(item => normalizeStoreName(item).toLowerCase()).filter(Boolean));
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return STORE_LOCATIONS.filter(item => next.has(item.toLowerCase()));
+    });
+  };
+
+  const toggleAll = () => {
+    setDraftStores(allSelected ? [] : [...STORE_LOCATIONS]);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await onSave(orderedDraft);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const label =
+    stores.length === STORE_LOCATIONS.length
+      ? 'All Stores'
+      : stores.length === 0
+      ? 'No Store'
+      : stores.length === 1
+      ? stores[0]
+      : `${stores.length} Stores`;
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          className="h-8 max-w-[180px] justify-between gap-2 text-xs font-semibold"
+        >
+          <span className="truncate">{label}</span>
+          {allSelected ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5 opacity-60" />}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[330px] p-3 space-y-3">
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">Search stores</p>
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={event => setSearch(event.target.value)}
+              placeholder="Type to filter stores"
+              className="h-9 pl-8 text-sm"
+            />
+          </div>
+        </div>
+
+        <div className="rounded-md border border-border/50 overflow-hidden">
+          <div className="px-3 py-2 bg-muted/30 border-b border-border/50">
+            <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer">
+              <Checkbox checked={allSelected} onCheckedChange={toggleAll} />
+              Select All
+            </label>
+          </div>
+          <div className="max-h-52 overflow-auto">
+            {filteredStores.map(store => {
+              const checked = normalizedDraft.has(store.toLowerCase());
+              return (
+                <label key={store} className="flex items-center gap-2 px-3 py-2.5 text-sm border-b border-border/40 last:border-b-0 cursor-pointer hover:bg-muted/20">
+                  <Checkbox checked={checked} onCheckedChange={() => toggleStore(store)} />
+                  {store}
+                </label>
+              );
+            })}
+            {filteredStores.length === 0 && (
+              <div className="px-3 py-6 text-xs text-muted-foreground text-center">No stores found</div>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <p className="text-xs text-muted-foreground font-medium">{orderedDraft.length} selected</p>
+          <Button size="sm" className="h-8 text-xs font-bold" onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Save'}
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export default function PermissionsPage() {
@@ -27,7 +228,23 @@ export default function PermissionsPage() {
   // Initialize from LocalStorage for 0ms loading feel
   const [users, setUsers] = useState<AppUser[]>(() => {
     const saved = localStorage.getItem('rajmandir_user_master');
-    return saved ? JSON.parse(saved) : [];
+    if (!saved) return [];
+    try {
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.map((user: any) => ({
+        ...user,
+        role: user?.role ?? null,
+        permissions: {
+          reports: Boolean(user?.permissions?.reports),
+          analytics: Boolean(user?.permissions?.analytics),
+        },
+        storeAccess: parseStoreAccess(user?.storeAccess ?? user?.store_access, user?.role ?? null),
+        allowedStores: parseAllowedStores(user?.allowedStores ?? user?.allowed_stores),
+      }));
+    } catch {
+      return [];
+    }
   });
   const [loading, setLoading] = useState(true);
   const [newUser, setNewUser] = useState({ name: '', email: '', role: 'user' as UserRole, department: '' });
@@ -90,14 +307,19 @@ export default function PermissionsPage() {
       if (!rows.length) rows = await requestUsers(sheetUrl);
 
       const mappedUsers = rows.map((u: any) => ({
-        id: String(pickFirst(u, ['id', 'Id', 'ID', '_id'])),
-        name: String(pickFirst(u, ['name', 'Name', 'full_name', 'Full Name', 'fullName'])),
+        id: String(pickFirst(u, ['id', 'Id', 'ID', '_id'])).trim(),
+        name: String(pickFirst(u, ['name', 'Name', 'full_name', 'Full Name', 'fullName'])).trim(),
         email: String(pickFirst(u, ['email', 'Email', 'email_id', 'Email ID', 'EmailId', 'mail', 'Mail'])).trim(),
-        department: String(pickFirst(u, ['department', 'Department', 'dept', 'Dept']) || 'Staff'),
+        department: String(pickFirst(u, ['department', 'Department', 'dept', 'Dept']) || 'Staff').trim(),
         role: parseRole(pickFirst(u, ['role', 'Role', 'user_role', 'User Role'])),
-        active: u.active === true || u.Active === true || u.active === 'TRUE',
+        active: u.active === true || u.Active === true || String(u.active || '').toUpperCase() === 'TRUE',
         status: parseStatus(pickFirst(u, ['status', 'Status', 'user_status', 'User Status'])),
-        permissions: parsePermissions(u.permissions ?? u.Permissions)
+        permissions: parsePermissions(u.permissions ?? u.Permissions),
+        storeAccess: parseStoreAccess(
+          pickFirst(u, STORE_ACCESS_KEYS),
+          parseRole(pickFirst(u, ['role', 'Role', 'user_role', 'User Role']))
+        ),
+        allowedStores: parseAllowedStores(pickFirst(u, ALLOWED_STORE_KEYS))
       }));
 
       setUsers(mappedUsers);
@@ -128,14 +350,25 @@ export default function PermissionsPage() {
   const updateSheetUser = async (user: AppUser, updates: Partial<AppUser>) => {
     if (!sheetUrl) return;
     try {
+      const payload: Record<string, unknown> = {
+        action: 'UPDATE_USER',
+        id: user.id,
+      };
+
+      if (updates.name !== undefined) payload.name = updates.name;
+      if (updates.email !== undefined) payload.email = updates.email;
+      if (updates.role !== undefined) payload.role = updates.role;
+      if (updates.department !== undefined) payload.department = updates.department;
+      if (updates.active !== undefined) payload.active = updates.active;
+      if (updates.status !== undefined) payload.status = updates.status;
+      if (updates.permissions !== undefined) payload.permissions = updates.permissions;
+      if (updates.storeAccess !== undefined) payload.store_access = updates.storeAccess;
+      if (updates.allowedStores !== undefined) payload.allowed_stores = serializeAllowedStores(updates.allowedStores);
+
       const res = await fetch(sheetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ 
-          action: 'UPDATE_USER', 
-          id: user.id,
-          ...updates 
-        })
+        body: JSON.stringify(payload)
       });
       const data = await res.json();
       if (data.success) {
@@ -150,7 +383,13 @@ export default function PermissionsPage() {
   };
 
   const approveUser = async (user: AppUser, initialRole: UserRole) => {
-    const success = await updateSheetUser(user, { status: 'Approved', role: initialRole, active: true });
+    const success = await updateSheetUser(user, {
+      status: 'Approved',
+      role: initialRole,
+      active: true,
+      storeAccess: initialRole === 'viewer' ? 'viewer' : 'editor',
+      allowedStores: [...STORE_LOCATIONS],
+    });
     if (success) toast.success(`${user.name} approved as ${initialRole}`);
   };
 
@@ -174,7 +413,9 @@ export default function PermissionsPage() {
           ...newUser, 
           status: 'Approved', 
           active: true,
-          permissions: { reports: false, analytics: false }
+          permissions: { reports: false, analytics: false },
+          store_access: newUser.role === 'viewer' ? 'viewer' : 'editor',
+          allowed_stores: 'ALL',
         })
       });
       const data = await res.json();
@@ -202,6 +443,16 @@ export default function PermissionsPage() {
     if (success) toast.success("Permission updated live");
   };
 
+  const updateStoreScope = async (user: AppUser, nextStores: string[]) => {
+    const success = await updateSheetUser(user, { allowedStores: nextStores });
+    if (success) toast.success("Store scope updated");
+  };
+
+  const updateStoreAccess = async (user: AppUser, nextAccess: StoreAccessLevel) => {
+    const success = await updateSheetUser(user, { storeAccess: nextAccess });
+    if (success) toast.success(`Store access set to ${nextAccess}`);
+  };
+
   return (
     <div className="space-y-6 pb-20 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
@@ -212,7 +463,7 @@ export default function PermissionsPage() {
           <div>
             <h2 className="text-3xl font-display font-bold text-foreground tracking-tight">Permission Control</h2>
             <p className="text-sm text-muted-foreground font-medium flex items-center gap-2">
-              {loading ? <Loader2 className="w-3 h-3 animate-spin text-primary" /> : <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />}
+              {loading ? <Loader2 className="w-3 h-3 animate-spin text-primary" /> : <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500" />}
               {loading ? 'Syncing...' : 'Live System Connected'}
             </p>
           </div>
@@ -293,11 +544,13 @@ export default function PermissionsPage() {
               </CardHeader>
               <CardContent className="p-0">
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse min-w-[700px]">
+                  <table className="w-full text-left border-collapse min-w-[980px]">
                     <thead>
                       <tr className="bg-muted/30 border-b border-border/40">
                         <th className="py-4 px-6 text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Employee Details</th>
                         <th className="py-4 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-widest">System Role</th>
+                        <th className="py-4 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Store Scope</th>
+                        <th className="py-4 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-widest">Store Access</th>
                         <th className="py-4 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-widest text-center">Reports</th>
                         <th className="py-4 px-4 text-[11px] font-bold text-muted-foreground uppercase tracking-widest text-center">Analytics</th>
                         <th className="py-4 px-6 text-[11px] font-bold text-muted-foreground uppercase tracking-widest text-right">Actions</th>
@@ -306,7 +559,7 @@ export default function PermissionsPage() {
                     <tbody className="divide-y divide-border/30">
                       {(loading && users.length === 0) ? (
                         <tr>
-                          <td colSpan={5} className="py-20 text-center">
+                          <td colSpan={7} className="py-20 text-center">
                              <Loader2 className="w-8 h-8 animate-spin text-primary/30 mx-auto mb-3" />
                              <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest opacity-50">Direct Fast Loading...</p>
                           </td>
@@ -332,6 +585,30 @@ export default function PermissionsPage() {
                             <Badge variant="outline" className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border-2 tracking-wide uppercase ${u.role === 'superadmin' ? 'border-amber-500/20 text-amber-600' : 'border-primary/20 text-primary'}`}>
                               {u.role || 'unassigned'}
                             </Badge>
+                          </td>
+                          <td className="py-4 px-4">
+                            <StoreScopePicker
+                              stores={u.allowedStores}
+                              disabled={u.role === 'superadmin'}
+                              onSave={(stores) => updateStoreScope(u, stores)}
+                            />
+                          </td>
+                          <td className="py-4 px-4">
+                            {u.role === 'superadmin' ? (
+                              <Badge variant="outline" className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border-2 border-amber-500/20 text-amber-600 uppercase">
+                                editor
+                              </Badge>
+                            ) : (
+                              <Select value={u.storeAccess} onValueChange={(value: StoreAccessLevel) => updateStoreAccess(u, value)}>
+                                <SelectTrigger className="h-8 w-[110px] text-xs font-semibold bg-background/50">
+                                  <SelectValue placeholder="Access" />
+                                </SelectTrigger>
+                                <SelectContent className="z-[9999]">
+                                  <SelectItem value="viewer">Viewer</SelectItem>
+                                  <SelectItem value="editor">Editor</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            )}
                           </td>
                           <td className="py-4 px-4 text-center">
                             <Button 
@@ -372,7 +649,7 @@ export default function PermissionsPage() {
                       ))}
                       {!loading && confirmedUsers.length === 0 && (
                         <tr>
-                          <td colSpan={5} className="py-20 text-center text-muted-foreground italic font-medium">No confirmed users found in database.</td>
+                          <td colSpan={7} className="py-20 text-center text-muted-foreground italic font-medium">No confirmed users found in database.</td>
                         </tr>
                       )}
                     </tbody>
@@ -443,21 +720,6 @@ export default function PermissionsPage() {
         </div>
       </div>
 
-      {/* Persistence Notification */}
-      <div className="max-w-4xl mx-auto p-5 bg-primary/5 border border-primary/20 rounded-3xl flex items-center gap-5">
-        <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white shrink-0">
-          <Shield className="w-5 h-5" />
-        </div>
-        <div>
-          <h4 className="text-sm font-bold text-amber-700 tracking-tight flex items-center gap-2 uppercase">
-            Super Admin Override Active
-            <div className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-          </h4>
-          <p className="text-xs font-medium text-amber-900/60 leading-relaxed mt-0.5">
-            You are the only user with **Main User Master** update permission. Real signup requests are fetched directly from your Google Sheets database.
-          </p>
-        </div>
-      </div>
     </div>
   );
 }

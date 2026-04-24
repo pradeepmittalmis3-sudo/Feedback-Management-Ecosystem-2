@@ -11,3 +11,16 @@ export const supabase = createClient(
   supabaseUrl || '',
   supabaseAnonKey || ''
 );
+
+// Reporting/public reads can use anon context to avoid user-session row scope mismatches.
+export const supabasePublic = createClient(
+  supabaseUrl || '',
+  supabaseAnonKey || '',
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  }
+);

@@ -1,22 +1,30 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { useFeedback } from '@/contexts/FeedbackContext';
-import { MessageSquareWarning, Clock, CheckCircle2, Star, Store, FileText } from 'lucide-react';
+import { MessageSquare, MessageSquareWarning, Clock, Star, Store, FileText } from 'lucide-react';
 
 const statCards = [
-  { key: 'total', label: 'Total Feedbacks', icon: FileText, color: 'text-info' },
+  { key: 'total', label: 'Total Entry', icon: FileText, color: 'text-info' },
+  { key: 'feedbacks', label: 'Feedbacks', icon: MessageSquare, color: 'text-info' },
   { key: 'avgRating', label: 'Avg Rating', icon: Star, color: 'text-warning' },
   { key: 'complaints', label: 'Complaints', icon: MessageSquareWarning, color: 'text-destructive' },
   { key: 'pending', label: 'Pending', icon: Clock, color: 'text-accent' },
-  { key: 'solved', label: 'Solved', icon: CheckCircle2, color: 'text-success' },
   { key: 'stores', label: 'Active Stores', icon: Store, color: 'text-primary' },
 ] as const;
 
-export default function StatsCards() {
+type StatsCardKey = (typeof statCards)[number]['key'];
+
+type StatsCardsProps = {
+  hiddenKeys?: StatsCardKey[];
+};
+
+export default function StatsCards({ hiddenKeys = [] }: StatsCardsProps) {
   const { stats } = useFeedback();
+  const visibleCards = statCards.filter(card => !hiddenKeys.includes(card.key));
+  const lgColsClass = visibleCards.length <= 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-6';
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-      {statCards.map(({ key, label, icon: Icon, color }, i) => (
+    <div className={`grid grid-cols-2 md:grid-cols-3 ${lgColsClass} gap-4`}>
+      {visibleCards.map(({ key, label, icon: Icon, color }, i) => (
         <Card 
           key={key} 
           className="glass-card animate-fade-in hover:-translate-y-1.5 hover:shadow-2xl hover:shadow-primary/5 transition-all duration-300 border-border/40 hover:border-primary/30 group relative overflow-hidden" 

@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { STORE_LOCATIONS } from '@/types/feedback';
-import { supabase } from '@/integrations/supabase/client';
+import { saveFeedback } from '@/lib/feedbackApi';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -228,24 +228,23 @@ export default function FeedbackFormPage() {
     if (!validateStep(step)) return;
     setSubmitting(true);
     try {
-      const payload = {
-        name: form.name.trim(),
-        mobile: form.mobile.trim(),
-        store_location: form.storeLocation,
-        staff_behavior: form.staffBehavior,
-        staff_service: form.staffService,
-        store_satisfaction: form.storeSatisfaction,
-        price_challenge_ok: form.priceChallengeOk,
-        bill_received: form.billReceived,
-        complaint: form.complaint.trim() || null,
-        feedback: form.feedback.trim() || null,
-        suggestions: form.suggestions.trim() || null,
-        product_unavailable: form.productUnavailable.trim() || null,
-        status: 'Pending',
-      };
-
-      const { error } = await supabase.from('feedback_submissions').insert([payload]);
-      if (error) throw error;
+      await saveFeedback({
+        source: 'app',
+        Name: form.name.trim(),
+        'Mobile Number': form.mobile.trim(),
+        'Store Location': form.storeLocation,
+        'Staff Behavior': form.staffBehavior,
+        'Staff Service': form.staffService,
+        'Satisfaction Level': form.storeSatisfaction,
+        'Price Challenge': form.priceChallengeOk === true ? 'YES' : 'NO',
+        'Bill Received': form.billReceived === true ? 'YES' : 'NO',
+        'Your Complaint': form.complaint.trim(),
+        'Your Feedback': form.feedback.trim(),
+        'Improvement Feedback': form.suggestions.trim(),
+        'Product Unavailable': form.productUnavailable.trim(),
+        'Type Complaint': form.complaint.trim() ? 'Complaint' : 'Feedback',
+        Status: 'Pending',
+      });
 
       setSubmitted(true);
       toast({ title: '🎉 Thank you!', description: 'Your feedback has been recorded successfully.' });

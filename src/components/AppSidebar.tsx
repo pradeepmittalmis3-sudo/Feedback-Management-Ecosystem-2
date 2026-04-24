@@ -1,4 +1,4 @@
-import { LayoutDashboard, MessageSquare, BarChart3, Settings, Users, FileText, Crown, Clock, CheckCircle2, Shield } from "lucide-react";
+import { LayoutDashboard, Users, FileText, Crown, Shield, Database, CheckCircle2 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -18,14 +18,12 @@ import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 
 const mainItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Pending", url: "/pending", icon: Clock },
-  { title: "Done", url: "/done", icon: CheckCircle2 },
-  { title: "Analytics", url: "/analytics", icon: BarChart3 },
+  { title: "Working Data", url: "/", icon: LayoutDashboard },
+  { title: "Resolved / Closed", url: "/done", icon: CheckCircle2 },
+  { title: "Analytics", url: "/analytics", icon: Database },
   { title: "Stores", url: "/stores", icon: Users },
   { title: "Reports", url: "/reports", icon: FileText },
   { title: "Permissions", url: "/permissions", icon: Shield, role: 'superadmin' },
-  { title: "Settings", url: "/settings", icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -35,9 +33,9 @@ export function AppSidebar() {
 
   const filteredItems = mainItems.filter(item => {
     if (role === 'superadmin') return true;
-    if (role === 'admin') return item.title !== 'Settings'; // Simple example
-    if (role === 'user') return ['Pending', 'Done'].includes(item.title);
-    if (role === 'viewer') return ['Dashboard', 'Analytics', 'Reports'].includes(item.title);
+    if (role === 'admin') return true;
+    if (role === 'user') return ['/'].includes(item.url);
+    if (role === 'viewer') return ['/', '/done', '/analytics', '/reports'].includes(item.url);
     return false;
   });
 
