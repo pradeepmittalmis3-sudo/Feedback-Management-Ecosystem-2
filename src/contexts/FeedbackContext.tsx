@@ -53,6 +53,19 @@ const DEFAULT_UPDATE_API_URL = 'http://localhost:3000/api/update';
 const WORKING_DATA_API_PAGE_SIZE = 500;
 const WORKING_DATA_API_MAX_PAGES = 200;
 
+const isLoopbackHost = (host: string) => {
+  const key = String(host || '').trim().toLowerCase();
+  return key === 'localhost' || key === '127.0.0.1' || key === '::1' || key === '[::1]';
+};
+
+const isLoopbackUrl = (url: string) => {
+  try {
+    return isLoopbackHost(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+};
+
 const parseHistoryField = (history: unknown, fieldLabel: string) => {
   const raw = String(history || '').trim();
   if (!raw) return '';
@@ -107,8 +120,21 @@ const normalizeQueueStatus = (value: unknown) =>
 const isWorkingQueueStatus = (value: unknown) =>
   WORKING_QUEUE_STATUS_KEYS.has(normalizeQueueStatus(value));
 
+const resolveUpdateApiUrl = () => {
+  const configured = String(import.meta.env.VITE_UPDATE_API_URL || '').trim();
+  const inBrowser = typeof window !== 'undefined';
+  const runningOnLoopback = inBrowser ? isLoopbackHost(window.location.hostname) : true;
+
+  // In deployed frontends, never auto-fallback to localhost.
+  if (!runningOnLoopback && !configured) return null;
+  if (!runningOnLoopback && configured && isLoopbackUrl(configured)) return null;
+
+  return configured || DEFAULT_UPDATE_API_URL;
+};
+
 const getWorkingDataApiUrl = () => {
-  const updateApiUrl = String(import.meta.env.VITE_UPDATE_API_URL || DEFAULT_UPDATE_API_URL).trim();
+  const updateApiUrl = resolveUpdateApiUrl();
+  if (!updateApiUrl) return null;
   return updateApiUrl.replace(/\/update\/?$/, '/working-data');
 };
 
@@ -159,6 +185,10 @@ export function FeedbackProvider({
           const workingDataApiUrl = getWorkingDataApiUrl();
 
           try {
+            if (!workingDataApiUrl) {
+              throw new Error('Working data backend API is not configured for this environment.');
+            }
+
             const allRows: any[] = [];
             let page = 1;
 
@@ -323,7 +353,7 @@ export function FeedbackProvider({
     updateData: Record<string, any>,
     sourceRecord?: Feedback,
   ) => {
-    const updateApiUrl = import.meta.env.VITE_UPDATE_API_URL || 'http://localhost:3000/api/update';
+    const updateApiUrl = resolveUpdateApiUrl();
     const safeId = String(id || '').trim();
     const safeRecordId = String(recordId || '').trim() || undefined;
 
@@ -332,6 +362,13 @@ export function FeedbackProvider({
         updated: false,
         error: new Error('Cannot update this row because it has no persistent DB ID.'),
         };
+    }
+
+    if (!updateApiUrl) {
+      return {
+        updated: false,
+        error: new Error('Update backend API is not configured in this deployed environment.'),
+      };
     }
 
     const nextStatus = asText(updateData.Status) ?? asText(sourceRecord?.status) ?? 'Pending';
